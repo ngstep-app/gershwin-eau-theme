@@ -25,16 +25,9 @@ static NSDictionary *titleTextAttributes[3] = {nil, nil, nil};
 
 - (void) drawWindowBackground: (NSRect) frame view: (NSView*) view
 {
-
   NSColor* backgroundColor = [[view window] backgroundColor];
-
-  NSBezierPath* backgroundPath = [NSBezierPath bezierPath];
-  NSRect backgroundRect = frame;
-  [backgroundPath appendBezierPathWithRect: backgroundRect];
-
   [backgroundColor setFill];
-
-  [backgroundPath fill];
+  NSRectFill(frame);
 }
 
 - (void) drawWindowBorder: (NSRect)rect
