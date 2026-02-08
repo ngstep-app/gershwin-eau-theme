@@ -10,12 +10,12 @@
 
 @interface DefaultButtonAnimation: NSAnimation
 {
-  NSButtonCell * defaultbuttoncell;
+  __weak NSButtonCell * defaultbuttoncell;
   BOOL reverse;
 }
 
 @property (nonatomic, assign) BOOL reverse;
-@property (strong) NSButtonCell * defaultbuttoncell;
+@property (nonatomic, weak) NSButtonCell * defaultbuttoncell;
 
 @end
 
@@ -43,25 +43,40 @@ static BOOL EAUIsDialogWindow(NSWindow *window)
 
 static void EAUCollectDialogTextFromView(NSMutableArray *parts, NSView *view)
 {
-  if (view == nil)
+  if (view == nil || parts == nil)
     {
       return;
     }
-  if ([view isKindOfClass: [NSTextField class]])
-    {
-      NSTextField *field = (NSTextField *)view;
-      NSString *value = [field stringValue];
-      if (value != nil && [value length] > 0)
+    
+  @try {
+    if ([view isKindOfClass: [NSTextField class]])
+      {
+        NSTextField *field = (NSTextField *)view;
+        NSString *value = [field stringValue];
+        if (value != nil && [value length] > 0)
+          {
+            [parts addObject: value];
+          }
+      }
+    
+    // Check if subviews array exists and is valid
+    NSArray *subviews = nil;
+    @try {
+      subviews = [view subviews];
+    } @catch (id ex) {}
+    
+    if (subviews) {
+      NSUInteger count = [subviews count];
+      for (NSUInteger i = 0; i < count; i++)
         {
-          [parts addObject: value];
+          @try {
+            EAUCollectDialogTextFromView(parts, [subviews objectAtIndex: i]);
+          } @catch (id ex) {}
         }
     }
-  NSArray *subviews = [view subviews];
-  NSUInteger count = [subviews count];
-  for (NSUInteger i = 0; i < count; i++)
-    {
-      EAUCollectDialogTextFromView(parts, [subviews objectAtIndex: i]);
-    }
+  } @catch (NSException *e) {
+    // Silently ignore errors during view traversal (e.g. during dealloc)
+  }
 }
 
 static NSString *EAUDialogTextSummary(NSWindow *window)
@@ -211,32 +226,45 @@ static void EAUWindowLog(NSString *event, NSWindow *window)
     {
         // Check if the button cell is enabled before updating pulse progress
         BOOL isEnabled = YES;
-        if ([defaultbuttoncell respondsToSelector:@selector(isEnabled)]) {
-          isEnabled = [defaultbuttoncell isEnabled];
-        }
-        
-        if (isEnabled) {
-          if(reverse)
-          {
-            defaultbuttoncell.pulseProgress = [NSNumber numberWithFloat: 1.0 - progress];
-          }else{
-            defaultbuttoncell.pulseProgress = [NSNumber numberWithFloat: progress];
-          }
-          [[defaultbuttoncell controlView] setNeedsDisplay: YES];
-        } else {
-          // Button is disabled, stop the animation and reset pulse progress
-          EAULOG(@"DefaultButtonAnimation: Button cell is disabled, stopping animation");
-          defaultbuttoncell.pulseProgress = [NSNumber numberWithFloat: 0.0];
-          [[defaultbuttoncell controlView] setNeedsDisplay: YES];
-          [self stopAnimation];
-          return;
+        @try {
+            if ([defaultbuttoncell respondsToSelector:@selector(isEnabled)]) {
+              isEnabled = [defaultbuttoncell isEnabled];
+            }
+            
+            if (isEnabled) {
+              if(reverse)
+              {
+                defaultbuttoncell.pulseProgress = [NSNumber numberWithFloat: 1.0 - progress];
+              }else{
+                defaultbuttoncell.pulseProgress = [NSNumber numberWithFloat: progress];
+              }
+              NSView *cv = [defaultbuttoncell controlView];
+              if (cv) {
+                  [cv setNeedsDisplay: YES];
+              }
+            } else {
+              // Button is disabled, stop the animation and reset pulse progress
+              EAULOG(@"DefaultButtonAnimation: Button cell is disabled, stopping animation");
+              defaultbuttoncell.pulseProgress = [NSNumber numberWithFloat: 0.0];
+              NSView *cv = [defaultbuttoncell controlView];
+              if (cv) {
+                  [cv setNeedsDisplay: YES];
+              }
+              [self stopAnimation];
+              return;
+            }
+        } @catch (NSException *e) {
+            [self stopAnimation];
+            return;
         }
     }
   if (defaultbuttoncell && progress >= 1.0)
   {
     reverse = !reverse;
     EAULOG(@"DefaultButtonAnimation: Reversing direction and restarting animation");
-    [self startAnimation];
+    if ([self isAnimating]) {
+        [self startAnimation];
+    }
   }
 }
 @end
@@ -245,11 +273,11 @@ static void EAUWindowLog(NSString *event, NSWindow *window)
 
 {
   DefaultButtonAnimation * animation;
-  NSButtonCell * buttoncell;
+  __weak NSButtonCell * buttoncell;
 }
 
-@property (strong) NSButtonCell * buttoncell;
-@property (strong) NSAnimation * animation;
+@property (nonatomic, weak) NSButtonCell * buttoncell;
+@property (nonatomic, strong) NSAnimation * animation;
 
 @end
 @implementation DefaultButtonAnimationController
@@ -337,34 +365,45 @@ static void EAUWindowLog(NSString *event, NSWindow *window)
 
 - (void) dealloc
 {
-  EAULOG(@"DefaultButtonAnimationController: dealloc called for cell %p", buttoncell);
+  EAULOG(@"DefaultButtonAnimationController: dealloc called");
   
   @try {
     // Stop animation and remove all notifications
     if (animation) {
+      [animation setDelegate: nil];
       [animation stopAnimation];
+      animation = nil;
     }
+    
+    // Use a local copy of buttoncell to avoid issues if it becomes nil during dealloc
+    NSButtonCell *cell = buttoncell;
+    
     [[NSNotificationCenter defaultCenter] removeObserver:self];
     
-    // Remove KVO observer for enabled property
-    // Be very careful here - buttoncell might have been deallocated already
-    if (buttoncell) {
+    // Remove KVO observer for enabled property safely
+    // We only do this if we can still reach the control and it seems valid
+    if (cell) {
       @try {
-        id controlView = [buttoncell controlView];
-        if (controlView) {
-          NSControl *control = (NSControl *)controlView;
+        NSView *cv = [cell controlView];
+        if (cv && [cv isKindOfClass:[NSControl class]]) {
+          NSControl *control = (NSControl *)cv;
+          // paracoid check: only remove if it's still alive enough to have property
           [control removeObserver:self forKeyPath:@"enabled"];
           EAULOG(@"DefaultButtonAnimationController: Removed KVO observer for enabled property on control %p", control);
         }
       } @catch (NSException *exception) {
-        EAULOG(@"DefaultButtonAnimationController: ERROR removing KVO observer: %@", exception);
+        EAULOG(@"DefaultButtonAnimationController: Exception removing KVO: %@", exception);
       }
+      
+      @try {
+        [cell setPulseProgress: [NSNumber numberWithFloat: 0.0]];
+        [cell setIsDefaultButton: [NSNumber numberWithBool: NO]];
+      } @catch (id ex) {}
     }
   } @catch (NSException *exception) {
     EAULOG(@"DefaultButtonAnimationController: ERROR in dealloc: %@", exception);
   }
   
-  animation = nil;
   buttoncell = nil;
 }
 
@@ -442,11 +481,17 @@ static void EAUWindowLog(NSString *event, NSWindow *window)
 - (void)windowWillClose:(NSNotification *)notification
 {
     NSWindow *closingWindow = [notification object];
-    NSWindow *buttonWindow = [[buttoncell controlView] window];
+    NSWindow *buttonWindow = nil;
     
-    if (closingWindow == buttonWindow) {
+    @try {
+        buttonWindow = [[buttoncell controlView] window];
+    } @catch (id ex) {}
+    
+    if (closingWindow == buttonWindow || closingWindow == nil) {
         EAULOG(@"DefaultButtonAnimationController: Button's window is closing, stopping animation");
-        [animation stopAnimation];
+        if (animation) {
+            [animation stopAnimation];
+        }
     }
 }
 
@@ -665,9 +710,23 @@ static const void *kEAUDefaultButtonControllerKey = &kEAUDefaultButtonController
  */
 - (void) EAUsetDefaultButtonCell: (NSButtonCell *)aCell
 {
-  EAULOG(@"NSWindow+Eau: EAUsetDefaultButtonCell called with cell %p", aCell);
+  EAULOG(@"NSWindow+Eau: EAUsetDefaultButtonCell called with cell %p for window %p", aCell, self);
   
   _defaultButtonCell = aCell;
+  
+  // Clear any existing animation controller first
+  id oldController = objc_getAssociatedObject(self, kEAUDefaultButtonControllerKey);
+  if (oldController) {
+    if ([self delegate] == oldController) {
+      [self setDelegate: nil];
+    }
+    objc_setAssociatedObject(self, kEAUDefaultButtonControllerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  }
+
+  if (aCell == nil) {
+    return;
+  }
+
   [self enableKeyEquivalentForDefaultButtonCell];
 
   [aCell setKeyEquivalent: @"\r"];

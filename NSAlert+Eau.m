@@ -51,7 +51,6 @@ static id EAUGetAlertIvar(id obj, const char *name)
 @implementation EauAlertPanel
 {
     BOOL _isStoppingModal;
-    id _selfRetainer;
 }
 
 static const void *kEAUAlertWindowRetainKey = &kEAUAlertWindowRetainKey;
@@ -265,8 +264,14 @@ static const void *kEAUAlertWindowRetainKey = &kEAUAlertWindowRetainKey;
 
 - (void) dealloc
 {
-    NSLog(@"Eau: EauAlertPanel dealloc called for panel: %@", self);
+    NSLog(@"Eau: EauAlertPanel dealloc called for panel: %p", self);
     
+    @try {
+        // Stop any pending animations or callbacks
+        [self setDefaultButtonCell: nil];
+        [self setDelegate: nil];
+    } @catch (id ex) {}
+
     // In ARC, ivars are automatically released when the object is deallocated
     // We don't need to explicitly release them, but we can set them to nil for safety
     defButton = nil;
@@ -560,26 +565,27 @@ static const void *kEAUAlertWindowRetainKey = &kEAUAlertWindowRetainKey;
     
     NSLog(@"Eau: buttonAction will stop modal with result: %ld", result);
     
-    // CRITICAL FIX: Defer stopModal to next run loop iteration
-    // This prevents crashes when performClick: is still processing events
-    // The window must remain valid until all event handling completes
-    // Use NSRunLoopCommonModes to work in both modal panel and default run loop modes
-    _selfRetainer = self;
-    [[NSRunLoop currentRunLoop] performSelector: @selector(_stopModalDeferred)
-                                         target: self
-                                       argument: nil
-                                          order: 0
-                                          modes: [NSArray arrayWithObjects: NSDefaultRunLoopMode, NSModalPanelRunLoopMode, nil]];
+    // Defer stopping the modal to the next run loop iteration.
+    // We use performSelector with specific modes because dispatch_async to the 
+    // main queue may not execute while the run loop is in NSModalPanelRunLoopMode.
+    [self performSelector: @selector(_stopModalDeferred)
+               withObject: nil
+               afterDelay: 0.0
+                  inModes: [NSArray arrayWithObjects: NSDefaultRunLoopMode, NSModalPanelRunLoopMode, nil]];
+    
     NSLog(@"Eau: buttonAction scheduled deferred modal stop");
 }
 
 - (void) _stopModalDeferred
 {
-    NSLog(@"Eau: _stopModalDeferred executing");
-    [NSApp stopModalWithCode: result];
-    NSLog(@"Eau: _stopModalDeferred completed");
+    // Ensure we check isActivePanel to avoid stopping a context we don't own anymore
+    if ([self isActivePanel] || [NSApp modalWindow] == self) {
+        NSLog(@"Eau: _stopModalDeferred executing for result: %ld", result);
+        [NSApp stopModalWithCode: result];
+    } else {
+        NSLog(@"Eau: _stopModalDeferred skipped - panel no longer active");
+    }
     _isStoppingModal = NO;
-    _selfRetainer = nil;
 }
 
 - (NSInteger) result
@@ -1365,12 +1371,14 @@ static void setKeyEquivalent(NSButton *button)
             // Ignore if ivar doesn't exist
         }
 
-        // Defer cleanup to next run loop to avoid use-after-free during modal teardown.
-        [[NSRunLoop currentRunLoop] performSelector: @selector(eau_cleanupPanel)
-                                             target: self
-                                           argument: nil
-                                              order: 0
-                                              modes: [NSArray arrayWithObjects: NSDefaultRunLoopMode, NSModalPanelRunLoopMode, nil]];
+        // Defer cleanup to ensure NSAlert stays alive until it's done. 
+        // Using performSelector with modes ensures this runs even if we are still
+        // in a modal session (nested modals).
+        [self performSelector: @selector(eau_cleanupPanel)
+                   withObject: nil
+                   afterDelay: 0.1
+                      inModes: [NSArray arrayWithObjects: NSDefaultRunLoopMode, NSModalPanelRunLoopMode, nil]];
+
         return result;
     }
     
@@ -1389,16 +1397,37 @@ static void setKeyEquivalent(NSButton *button)
 // Cleanup helper to clear NSAlert's window after modal teardown.
 - (void)eau_cleanupPanel
 {
+    NSLog(@"Eau: eau_cleanupPanel called for NSAlert %p", self);
     Ivar windowIvar = class_getInstanceVariable([self class], "_window");
     if (windowIvar)
     {
-        object_setIvar(self, windowIvar, nil);
-        objc_setAssociatedObject(self, kEAUAlertWindowRetainKey, nil, OBJC_ASSOCIATION_ASSIGN);
+        // Check current value
+        id currentWindow = object_getIvar(self, windowIvar);
+        if (currentWindow) {
+            NSLog(@"Eau: Cleaning up window %p before release", currentWindow);
+            @try {
+                // Ensure pulse animation and delegate are cleared while window is still alive
+                if ([currentWindow respondsToSelector: @selector(setDefaultButtonCell:)]) {
+                    [currentWindow setDefaultButtonCell: nil];
+                }
+                if ([currentWindow respondsToSelector: @selector(setDelegate:)]) {
+                    [currentWindow setDelegate: nil];
+                }
+            } @catch (NSException *e) {
+                NSLog(@"Eau: Exception during window cleanup: %@", e);
+            }
+            
+            NSLog(@"Eau: Clearing _window ivar and associated object on NSAlert");
+            object_setIvar(self, windowIvar, nil);
+            objc_setAssociatedObject(self, kEAUAlertWindowRetainKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
     }
     else
     {
+        NSLog(@"Eau: _window ivar not found during cleanup, trying KVC");
         @try {
             [self setValue: nil forKey: @"_window"];
+            objc_setAssociatedObject(self, kEAUAlertWindowRetainKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
         @catch (NSException *exception) {
             // Ignore if ivar doesn't exist
