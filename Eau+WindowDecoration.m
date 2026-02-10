@@ -160,6 +160,11 @@ static NSDictionary *titleTextAttributes[3] = {nil, nil, nil};
   [linePath stroke];
 }
 
+- (NSColor *) windowFrameBorderColor
+{
+  return [Eau controlStrokeColor];
+}
+
 - (void) drawResizeBarRect: (NSRect)resizeBarRect
 {
   //I don't want to draw the resize bar
