@@ -14,6 +14,7 @@ Eau_OBJC_FILES = \
 		Eau+Button.m\
 		Eau+FocusFrame.m\
 		Eau+WindowDecoration.m\
+		Eau+TitleBarButtons.m\
 		Eau+Menu.m\
 		Eau+Slider.m\
 		Eau+ProgressIndicator.m\
