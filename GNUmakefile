@@ -36,6 +36,8 @@ Eau_OBJC_FILES = \
 		NSTableHeaderCell+Eau.m\
 		EauWindowButton.m\
 		EauWindowButtonCell.m\
+		EauTitleBarButton.m\
+		EauTitleBarButtonCell.m\
 		EauScrollerKnobCell.m\
 		EauScrollerKnobSlotCell.m\
 		EauScrollerArrowCell.m\
