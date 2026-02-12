@@ -89,7 +89,7 @@ static NSDictionary *titleTextAttributes[3] = {nil, nil, nil};
   if (styleMask & NSMiniaturizableWindowMask)
     {
       NSRect minRect;
-      if (styleMask & NSResizableWindowMask) {
+      if (EauTitleBarButtonStyleIsOrb() || (styleMask & NSResizableWindowMask)) {
         minRect = [self minimizeButtonRectForTitlebarWidth:titlebarWidth];
       } else {
         // Solo minimize: position at right edge
