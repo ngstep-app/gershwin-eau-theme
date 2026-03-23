@@ -14,6 +14,7 @@ Eau_OBJC_FILES = \
 		Eau+Button.m\
 		Eau+FocusFrame.m\
 		Eau+WindowDecoration.m\
+		Eau+TitleBarButtons.m\
 		Eau+Menu.m\
 		Eau+Slider.m\
 		Eau+ProgressIndicator.m\
@@ -36,6 +37,8 @@ Eau_OBJC_FILES = \
 		NSTableHeaderCell+Eau.m\
 		EauWindowButton.m\
 		EauWindowButtonCell.m\
+		EauTitleBarButton.m\
+		EauTitleBarButtonCell.m\
 		EauScrollerKnobCell.m\
 		EauScrollerKnobSlotCell.m\
 		EauScrollerArrowCell.m\
@@ -53,9 +56,11 @@ Eau_OBJC_FILES = \
 		NSMenuView+Eau.m\
 		NSMenu+Eau.m\
 		NSBox+Eau.m\
-		NSPopUpButton+Eau.m
+		NSPopUpButton+Eau.m\
+		GSDisplayServer+Eau.m
 ADDITIONAL_TOOL_LIBS =
 ADDITIONAL_OBJCFLAGS += -fobjc-arc -fobjc-arc-exceptions
+ADDITIONAL_LDFLAGS += -lX11
 $(BUNDLE_NAME)_RESOURCE_FILES = \
 	./Resources/ThemeIcon.png\
 	./Resources/ThemePreview.png\

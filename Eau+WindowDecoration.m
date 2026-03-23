@@ -1,4 +1,5 @@
 #import "Eau.h"
+#import "Eau+TitleBarButtons.h"
 #import "AppearanceMetrics.h"
 
 @interface Eau(EauWindowDecoration)
@@ -24,16 +25,9 @@ static NSDictionary *titleTextAttributes[3] = {nil, nil, nil};
 
 - (void) drawWindowBackground: (NSRect) frame view: (NSView*) view
 {
-
   NSColor* backgroundColor = [[view window] backgroundColor];
-
-  NSBezierPath* backgroundPath = [NSBezierPath bezierPath];
-  NSRect backgroundRect = frame;
-  [backgroundPath appendBezierPathWithRect: backgroundRect];
-
   [backgroundColor setFill];
-
-  [backgroundPath fill];
+  NSRectFill(frame);
 }
 
 - (void) drawWindowBorder: (NSRect)rect
@@ -71,33 +65,93 @@ static NSDictionary *titleTextAttributes[3] = {nil, nil, nil};
       [self prepareTitleTextAttributes];
     }
 
+  // Map GSThemeControlState to titleTextAttributes index (0=active, 1=inactive, 2=main)
+  // GSThemeNormalState=0 → active, GSThemeSelectedState=6 → inactive, anything else → inactive
+  int attrIndex = (inputState == 0) ? 0 : 1;
+
   NSRect workRect;
+  CGFloat titlebarWidth = titleRect.size.width;
+  BOOL isActive = (inputState == 0);  // 0 = key window (active)
 
   workRect = titleRect;
   workRect.origin.x -= 0.5;
   workRect.origin.y -= 0.5;
   [self drawTitleBarBackground:workRect];
 
+  // Draw edge buttons
+  if (styleMask & NSClosableWindowMask)
+    {
+      NSRect closeRect = [self closeButtonRectForTitlebarWidth:titlebarWidth];
+      closeRect.origin.y += titleRect.origin.y;
+      [self drawCloseButtonInRect:closeRect state:GSThemeNormalState active:isActive];
+    }
+
+  if (styleMask & NSMiniaturizableWindowMask)
+    {
+      NSRect minRect;
+      if (EauTitleBarButtonStyleIsOrb() || (styleMask & NSResizableWindowMask)) {
+        minRect = [self minimizeButtonRectForTitlebarWidth:titlebarWidth];
+      } else {
+        // Solo minimize: position at right edge
+        minRect = NSMakeRect(titlebarWidth - METRICS_TITLEBAR_EDGE_BUTTON_WIDTH, 0,
+                             METRICS_TITLEBAR_EDGE_BUTTON_WIDTH, METRICS_TITLEBAR_HEIGHT);
+      }
+      minRect.origin.y += titleRect.origin.y;
+      [self drawMinimizeButtonInRect:minRect state:GSThemeNormalState active:isActive];
+    }
+
+  if (styleMask & NSResizableWindowMask)
+    {
+      NSRect zoomRect = [self maximizeButtonRectForTitlebarWidth:titlebarWidth];
+      zoomRect.origin.y += titleRect.origin.y;
+      [self drawMaximizeButtonInRect:zoomRect state:GSThemeNormalState active:isActive];
+    }
+
   // Draw the title.
   if (styleMask & NSTitledWindowMask)
     {
       NSSize titleSize;
-      if (styleMask & NSMiniaturizableWindowMask)
-        {
-          workRect.origin.x += 17;
-          workRect.size.width -= 17;
-        }
-      if (styleMask & NSClosableWindowMask)
-        {
-          workRect.size.width -= 17;
-        }
-      titleSize = [title sizeWithAttributes: titleTextAttributes[inputState]];
+      workRect = titleRect;
+
+      if (EauTitleBarButtonStyleIsOrb()) {
+        // Orb style: all buttons on left, reserve orb region
+        workRect.origin.x += METRICS_TITLEBAR_ORB_REGION_WIDTH;
+        workRect.size.width -= METRICS_TITLEBAR_ORB_REGION_WIDTH;
+      } else {
+        // Edge style: close on left, minimize+maximize on right
+        if (styleMask & NSClosableWindowMask)
+          {
+            workRect.origin.x += METRICS_TITLEBAR_EDGE_BUTTON_WIDTH;
+            workRect.size.width -= METRICS_TITLEBAR_EDGE_BUTTON_WIDTH;
+          }
+        if ((styleMask & NSMiniaturizableWindowMask) && (styleMask & NSResizableWindowMask))
+          {
+            workRect.size.width -= METRICS_TITLEBAR_RIGHT_REGION_WIDTH;  // two buttons
+          }
+        else if ((styleMask & NSMiniaturizableWindowMask) || (styleMask & NSResizableWindowMask))
+          {
+            workRect.size.width -= METRICS_TITLEBAR_EDGE_BUTTON_WIDTH;   // one button
+          }
+      }
+
+      titleSize = [title sizeWithAttributes: titleTextAttributes[attrIndex]];
       if (titleSize.width <= workRect.size.width)
-        workRect.origin.x = NSMidX(workRect) - titleSize.width / 2;
+        {
+          if (EauTitleBarButtonStyleIsOrb()) {
+            // Center in full titlebar width, clamp to not overlap orb region
+            CGFloat centeredX = titleRect.origin.x + titleRect.size.width / 2.0 - titleSize.width / 2.0;
+            workRect.origin.x = MAX(centeredX, titleRect.origin.x + METRICS_TITLEBAR_ORB_REGION_WIDTH);
+          } else {
+            CGFloat centeredX = titleRect.origin.x + titleRect.size.width / 2.0 - titleSize.width / 2.0;
+            CGFloat minX = workRect.origin.x;
+            CGFloat maxX = NSMaxX(workRect) - titleSize.width;
+            workRect.origin.x = MAX(minX, MIN(centeredX, maxX));
+          }
+        }
       workRect.origin.y = NSMidY(workRect) - titleSize.height / 2;
       workRect.size.height = titleSize.height;
       [title drawInRect: workRect
-          withAttributes: titleTextAttributes[inputState]];
+          withAttributes: titleTextAttributes[attrIndex]];
     }
 }
 
@@ -137,6 +191,11 @@ static NSDictionary *titleTextAttributes[3] = {nil, nil, nil};
   [linePath stroke];
 }
 
+- (NSColor *) windowFrameBorderColor
+{
+  return [Eau controlStrokeColor];
+}
+
 - (void) drawResizeBarRect: (NSRect)resizeBarRect
 {
   //I don't want to draw the resize bar
@@ -153,28 +212,27 @@ static NSDictionary *titleTextAttributes[3] = {nil, nil, nil};
   [p setLineBreakMode: NSLineBreakByClipping];
 
 
-  normalColor = [NSColor colorWithCalibratedRed: 0.1 green: 0.1 blue: 0.1 alpha: 1];
-
-  mainColor = normalColor;
-  keyColor = normalColor;
+  keyColor = [NSColor colorWithCalibratedRed: 0.1 green: 0.1 blue: 0.1 alpha: 1];
+  normalColor = [NSColor colorWithCalibratedRed: 0.50 green: 0.50 blue: 0.50 alpha: 1];  // Lighter for unfocused
+  mainColor = keyColor;
 
   titleTextAttributes[0] = [[NSMutableDictionary alloc]
     initWithObjectsAndKeys:
-      [NSFont titleBarFontOfSize: 0], NSFontAttributeName,
+      [NSFont systemFontOfSize: 0], NSFontAttributeName,
       keyColor, NSForegroundColorAttributeName,
       p, NSParagraphStyleAttributeName,
       nil];
 
   titleTextAttributes[1] = [[NSMutableDictionary alloc]
     initWithObjectsAndKeys:
-    [NSFont titleBarFontOfSize: 0], NSFontAttributeName,
+    [NSFont systemFontOfSize: 0], NSFontAttributeName,
     normalColor, NSForegroundColorAttributeName,
     p, NSParagraphStyleAttributeName,
     nil];
 
   titleTextAttributes[2] = [[NSMutableDictionary alloc]
     initWithObjectsAndKeys:
-    [NSFont titleBarFontOfSize: 0], NSFontAttributeName,
+    [NSFont systemFontOfSize: 0], NSFontAttributeName,
     mainColor, NSForegroundColorAttributeName,
     p, NSParagraphStyleAttributeName,
     nil];
