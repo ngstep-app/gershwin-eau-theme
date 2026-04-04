@@ -136,7 +136,7 @@ static char originalFrameKey;  // Store original frame before zoom
       closeButtonRect = NSMakeRect(
         0,
         titleBarY,
-        METRICS_TITLEBAR_EDGE_BUTTON_WIDTH, METRICS_TITLEBAR_HEIGHT);
+        METRICS_TITLEBAR_HEIGHT, METRICS_TITLEBAR_HEIGHT);
       [closeButton setFrame: closeButtonRect];
 
       if ([closeButton isKindOfClass:[EauTitleBarButton class]]) {
@@ -151,15 +151,15 @@ static char originalFrameKey;  // Store original frame before zoom
       CGFloat x;
       EauTitleBarButtonPosition position;
       if ([self hasZoomButton]) {
-        x = viewWidth - METRICS_TITLEBAR_RIGHT_REGION_WIDTH;
+        x = viewWidth - 2 * METRICS_TITLEBAR_HEIGHT;
         position = EauTitleBarButtonPositionRightInner;
       } else {
-        x = viewWidth - METRICS_TITLEBAR_EDGE_BUTTON_WIDTH;
+        x = viewWidth - METRICS_TITLEBAR_HEIGHT;
         position = EauTitleBarButtonPositionRightOuter;
       }
       miniaturizeButtonRect = NSMakeRect(
         x, titleBarY,
-        METRICS_TITLEBAR_EDGE_BUTTON_WIDTH, METRICS_TITLEBAR_HEIGHT);
+        METRICS_TITLEBAR_HEIGHT, METRICS_TITLEBAR_HEIGHT);
       [miniaturizeButton setFrame: miniaturizeButtonRect];
 
       if ([miniaturizeButton isKindOfClass:[EauTitleBarButton class]]) {
@@ -171,10 +171,10 @@ static char originalFrameKey;  // Store original frame before zoom
     // Zoom button - outer (rightmost) of two side-by-side buttons on right
     if ([self hasZoomButton])
     {
-      CGFloat x = viewWidth - METRICS_TITLEBAR_EDGE_BUTTON_WIDTH;
+      CGFloat x = viewWidth - METRICS_TITLEBAR_HEIGHT;
       NSRect zoomButtonRect = NSMakeRect(
         x, titleBarY,
-        METRICS_TITLEBAR_EDGE_BUTTON_WIDTH, METRICS_TITLEBAR_HEIGHT);
+        METRICS_TITLEBAR_HEIGHT, METRICS_TITLEBAR_HEIGHT);
 
       NSValue *rectValue = [NSValue valueWithRect:zoomButtonRect];
       objc_setAssociatedObject(self, &zoomButtonRectKey, rectValue, OBJC_ASSOCIATION_RETAIN_NONATOMIC);

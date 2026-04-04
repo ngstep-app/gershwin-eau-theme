@@ -34,8 +34,8 @@ BOOL EauTitleBarButtonStyleIsOrb(void)
         return NSMakeRect(METRICS_TITLEBAR_ORB_PADDING_LEFT, buttonY,
                           METRICS_TITLEBAR_ORB_BUTTON_SIZE, METRICS_TITLEBAR_ORB_BUTTON_SIZE);
     }
-    // Close button at left edge, full height
-    return NSMakeRect(0, 0, METRICS_TITLEBAR_EDGE_BUTTON_WIDTH, METRICS_TITLEBAR_HEIGHT);
+    // Close button at left edge, square (width == height)
+    return NSMakeRect(0, 0, METRICS_TITLEBAR_HEIGHT, METRICS_TITLEBAR_HEIGHT);
 }
 
 - (NSRect)minimizeButtonRectForTitlebarWidth:(CGFloat)width
@@ -46,10 +46,10 @@ BOOL EauTitleBarButtonStyleIsOrb(void)
         return NSMakeRect(x, buttonY,
                           METRICS_TITLEBAR_ORB_BUTTON_SIZE, METRICS_TITLEBAR_ORB_BUTTON_SIZE);
     }
-    // Minimize button - inner of two side-by-side buttons on right
-    CGFloat x = width - METRICS_TITLEBAR_RIGHT_REGION_WIDTH;
+    // Minimize button - inner of two side-by-side square buttons on right
+    CGFloat x = width - 2 * METRICS_TITLEBAR_HEIGHT;
     return NSMakeRect(x, 0,
-                      METRICS_TITLEBAR_EDGE_BUTTON_WIDTH,
+                      METRICS_TITLEBAR_HEIGHT,
                       METRICS_TITLEBAR_HEIGHT);
 }
 
@@ -62,10 +62,10 @@ BOOL EauTitleBarButtonStyleIsOrb(void)
         return NSMakeRect(x, buttonY,
                           METRICS_TITLEBAR_ORB_BUTTON_SIZE, METRICS_TITLEBAR_ORB_BUTTON_SIZE);
     }
-    // Maximize button - outer (rightmost) of two side-by-side buttons on right
-    CGFloat x = width - METRICS_TITLEBAR_EDGE_BUTTON_WIDTH;
+    // Maximize button - outer (rightmost) of two side-by-side square buttons on right
+    CGFloat x = width - METRICS_TITLEBAR_HEIGHT;
     return NSMakeRect(x, 0,
-                      METRICS_TITLEBAR_EDGE_BUTTON_WIDTH,
+                      METRICS_TITLEBAR_HEIGHT,
                       METRICS_TITLEBAR_HEIGHT);
 }
 
@@ -74,8 +74,8 @@ BOOL EauTitleBarButtonStyleIsOrb(void)
     if (EauTitleBarButtonStyleIsOrb()) {
         return NSZeroRect;
     }
-    return NSMakeRect(width - METRICS_TITLEBAR_RIGHT_REGION_WIDTH, 0,
-                      METRICS_TITLEBAR_RIGHT_REGION_WIDTH, METRICS_TITLEBAR_HEIGHT);
+    return NSMakeRect(width - 2 * METRICS_TITLEBAR_HEIGHT, 0,
+                      2 * METRICS_TITLEBAR_HEIGHT, METRICS_TITLEBAR_HEIGHT);
 }
 
 #pragma mark - Drawing Methods

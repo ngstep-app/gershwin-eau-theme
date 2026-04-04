@@ -7,7 +7,6 @@
 @end
 
 
-#define TITLE_HEIGHT 24.0
 #define RESIZE_HEIGHT 9.0
 
 @implementation Eau(EauWindowDecoration)
@@ -20,7 +19,7 @@ static NSDictionary *titleTextAttributes[3] = {nil, nil, nil};
 }
 
 - (float) titlebarHeight {
-    return TITLE_HEIGHT;
+    return METRICS_TITLEBAR_HEIGHT;
 }
 
 - (void) drawWindowBackground: (NSRect) frame view: (NSView*) view
@@ -41,8 +40,8 @@ static NSDictionary *titleTextAttributes[3] = {nil, nil, nil};
     {
       NSRect titleRect;
 
-      titleRect = NSMakeRect(0.0, frame.size.height - TITLE_HEIGHT,
-                                frame.size.width, TITLE_HEIGHT);
+      titleRect = NSMakeRect(0.0, frame.size.height - METRICS_TITLEBAR_HEIGHT,
+                                frame.size.width, METRICS_TITLEBAR_HEIGHT);
 
       if (NSIntersectsRect(rect, titleRect))
         [self drawtitleRect: titleRect
@@ -93,8 +92,8 @@ static NSDictionary *titleTextAttributes[3] = {nil, nil, nil};
         minRect = [self minimizeButtonRectForTitlebarWidth:titlebarWidth];
       } else {
         // Solo minimize: position at right edge
-        minRect = NSMakeRect(titlebarWidth - METRICS_TITLEBAR_EDGE_BUTTON_WIDTH, 0,
-                             METRICS_TITLEBAR_EDGE_BUTTON_WIDTH, METRICS_TITLEBAR_HEIGHT);
+        minRect = NSMakeRect(titlebarWidth - METRICS_TITLEBAR_HEIGHT, 0,
+                             METRICS_TITLEBAR_HEIGHT, METRICS_TITLEBAR_HEIGHT);
       }
       minRect.origin.y += titleRect.origin.y;
       [self drawMinimizeButtonInRect:minRect state:GSThemeNormalState active:isActive];
@@ -121,16 +120,16 @@ static NSDictionary *titleTextAttributes[3] = {nil, nil, nil};
         // Edge style: close on left, minimize+maximize on right
         if (styleMask & NSClosableWindowMask)
           {
-            workRect.origin.x += METRICS_TITLEBAR_EDGE_BUTTON_WIDTH;
-            workRect.size.width -= METRICS_TITLEBAR_EDGE_BUTTON_WIDTH;
+            workRect.origin.x += METRICS_TITLEBAR_HEIGHT;
+            workRect.size.width -= METRICS_TITLEBAR_HEIGHT;
           }
         if ((styleMask & NSMiniaturizableWindowMask) && (styleMask & NSResizableWindowMask))
           {
-            workRect.size.width -= METRICS_TITLEBAR_RIGHT_REGION_WIDTH;  // two buttons
+            workRect.size.width -= 2 * METRICS_TITLEBAR_HEIGHT;  // two buttons
           }
         else if ((styleMask & NSMiniaturizableWindowMask) || (styleMask & NSResizableWindowMask))
           {
-            workRect.size.width -= METRICS_TITLEBAR_EDGE_BUTTON_WIDTH;   // one button
+            workRect.size.width -= METRICS_TITLEBAR_HEIGHT;   // one button
           }
       }
 
