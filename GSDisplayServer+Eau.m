@@ -35,6 +35,182 @@
 #import <objc/runtime.h>
 #import <X11/Xlib.h>
 #import <X11/Xatom.h>
+#include <stdlib.h>
+
+static BOOL EAUIsDialogLikeWindow(NSWindow *window, int level)
+{
+  if (window == nil)
+    {
+      return NO;
+    }
+
+  if ([window isKindOfClass: [NSPanel class]])
+    {
+      return YES;
+    }
+
+  if (level >= NSModalPanelWindowLevel)
+    {
+      return YES;
+    }
+
+  if (([window styleMask] & NSUtilityWindowMask) != 0)
+    {
+      return YES;
+    }
+
+  return NO;
+}
+
+static BOOL EAUIsMenuPanelWindow(NSWindow *window)
+{
+  Class menuPanelClass = NSClassFromString(@"NSMenuPanel");
+  return (menuPanelClass != Nil && [window isKindOfClass: menuPanelClass]);
+}
+
+static BOOL EAUIsModalDialogWindow(NSWindow *window, int level)
+{
+  if (window == nil)
+    {
+      return NO;
+    }
+
+  if (level >= NSModalPanelWindowLevel)
+    {
+      return YES;
+    }
+
+  return NO;
+}
+
+static void EAUEnsureWindowStates(Display *dpy,
+                                  Window xwin,
+                                  Atom *requiredStates,
+                                  unsigned int requiredCount)
+{
+  Atom wmState;
+  Atom actualType = None;
+  int actualFormat = 0;
+  unsigned long nitems = 0;
+  unsigned long bytesAfter = 0;
+  unsigned char *existing = NULL;
+  Atom *newStates;
+  BOOL changed = NO;
+  unsigned int missingCount = 0;
+  unsigned long i;
+  unsigned int r;
+  unsigned long outIndex;
+
+  wmState = XInternAtom(dpy, "_NET_WM_STATE", False);
+  if (wmState == None || requiredStates == NULL || requiredCount == 0)
+    {
+      return;
+    }
+
+  if (XGetWindowProperty(dpy,
+                         xwin,
+                         wmState,
+                         0,
+                         1024,
+                         False,
+                         XA_ATOM,
+                         &actualType,
+                         &actualFormat,
+                         &nitems,
+                         &bytesAfter,
+                         &existing) == Success
+      && actualType == XA_ATOM
+      && actualFormat == 32)
+    {
+      Atom *states = (Atom *)existing;
+      for (r = 0; r < requiredCount; r++)
+        {
+          BOOL found = NO;
+          for (i = 0; i < nitems; i++)
+            {
+              if (states[i] == requiredStates[r])
+                {
+                  found = YES;
+                  break;
+                }
+            }
+          if (found == NO)
+            {
+              missingCount++;
+            }
+        }
+
+      if (missingCount > 0)
+        {
+          newStates = (Atom *)calloc((size_t)nitems + missingCount, sizeof(Atom));
+          if (newStates != NULL)
+            {
+              for (i = 0; i < nitems; i++)
+                {
+                  newStates[i] = states[i];
+                }
+
+              outIndex = nitems;
+              for (r = 0; r < requiredCount; r++)
+                {
+                  BOOL found = NO;
+                  for (i = 0; i < nitems; i++)
+                    {
+                      if (states[i] == requiredStates[r])
+                        {
+                          found = YES;
+                          break;
+                        }
+                    }
+                  if (found == NO)
+                    {
+                      newStates[outIndex] = requiredStates[r];
+                      outIndex++;
+                    }
+                }
+
+              XChangeProperty(dpy,
+                              xwin,
+                              wmState,
+                              XA_ATOM,
+                              32,
+                              PropModeReplace,
+                              (unsigned char *)newStates,
+                              (int)outIndex);
+              free(newStates);
+              changed = YES;
+            }
+        }
+    }
+
+  if (existing != NULL)
+    {
+      XFree(existing);
+    }
+
+  if (changed == NO && nitems == 0)
+    {
+      Atom *initialStates;
+      initialStates = (Atom *)calloc(requiredCount, sizeof(Atom));
+      if (initialStates == NULL)
+        {
+          return;
+        }
+      for (r = 0; r < requiredCount; r++)
+        {
+          initialStates[r] = requiredStates[r];
+        }
+      XChangeProperty(dpy,
+                      xwin,
+                      wmState,
+                      XA_ATOM,
+                      32,
+                      PropModeReplace,
+                      (unsigned char *)initialStates,
+                      (int)requiredCount);
+      free(initialStates);
+    }
+}
 
 @implementation GSDisplayServer (EauPopupMenuFix)
 
@@ -65,8 +241,16 @@
 
 - (void) eau_setwindowlevel: (int)level : (int)win
 {
+  NSWindow *nswin;
+
   /* Call original (swizzled) */
   [self eau_setwindowlevel: level : win];
+
+  nswin = GSWindowWithNumber(win);
+  if (nswin == nil)
+    {
+      return;
+    }
 
   /* Fix popup menu window type: libs-back sets DIALOG instead of POPUP_MENU */
   if (level == NSPopUpMenuWindowLevel)
@@ -74,24 +258,62 @@
       /* Only fix actual menu panel windows. NSPopUpMenuWindowLevel is shared
          by tooltips, autocomplete, drag views, popovers, and other windows
          that must keep the default DIALOG type. */
-      NSWindow *nswin = GSWindowWithNumber(win);
-      if (!nswin)
-        return;
-
       Class menuPanelClass = NSClassFromString(@"NSMenuPanel");
-      if (!menuPanelClass || ![nswin isKindOfClass: menuPanelClass])
-        return;
+      if (menuPanelClass != Nil && [nswin isKindOfClass: menuPanelClass])
+        {
+          Display *dpy = (Display *)[self serverDevice];
+          Window xwin = (Window)(uintptr_t)[self windowDevice: win];
+          if (dpy != NULL && xwin != 0)
+            {
+              Atom wmType = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
+              Atom popupType = XInternAtom(dpy,
+                                           "_NET_WM_WINDOW_TYPE_POPUP_MENU",
+                                           False);
+              XChangeProperty(dpy,
+                              xwin,
+                              wmType,
+                              XA_ATOM,
+                              32,
+                              PropModeReplace,
+                              (unsigned char *)&popupType,
+                              1);
+            }
+        }
+    }
 
+  if (EAUIsDialogLikeWindow(nswin, level) && EAUIsMenuPanelWindow(nswin) == NO)
+    {
       Display *dpy = (Display *)[self serverDevice];
       Window xwin = (Window)(uintptr_t)[self windowDevice: win];
-      if (dpy && xwin)
+      if (dpy != NULL && xwin != 0)
         {
-          Atom wmType = XInternAtom(dpy, "_NET_WM_WINDOW_TYPE", False);
-          Atom popupType = XInternAtom(dpy,
-                                       "_NET_WM_WINDOW_TYPE_POPUP_MENU",
-                                       False);
-          XChangeProperty(dpy, xwin, wmType, XA_ATOM, 32, PropModeReplace,
-                         (unsigned char *)&popupType, 1);
+          Atom skipTaskbar;
+          Atom skipPager;
+          Atom modal;
+          Atom states[3];
+          unsigned int stateCount = 0;
+
+          skipTaskbar = XInternAtom(dpy, "_NET_WM_STATE_SKIP_TASKBAR", False);
+          skipPager = XInternAtom(dpy, "_NET_WM_STATE_SKIP_PAGER", False);
+          modal = XInternAtom(dpy, "_NET_WM_STATE_MODAL", False);
+
+          if (skipTaskbar != None)
+            {
+              states[stateCount] = skipTaskbar;
+              stateCount++;
+            }
+          if (skipPager != None)
+            {
+              states[stateCount] = skipPager;
+              stateCount++;
+            }
+          if (EAUIsModalDialogWindow(nswin, level) && modal != None)
+            {
+              states[stateCount] = modal;
+              stateCount++;
+            }
+
+          EAUEnsureWindowStates(dpy, xwin, states, stateCount);
         }
     }
 }

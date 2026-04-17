@@ -651,7 +651,8 @@ static Eau *gSharedEauInstance = nil;
   menuServerConnection = nil;
   menuServerProxy = nil;
   menuServerConnected = NO;
-  [[EauMenuRelaunchManager sharedManager] relaunchMenuProcessIfSnapshotAvailable];
+  // Automatic Menu.app restart disabled.
+  // [[EauMenuRelaunchManager sharedManager] relaunchMenuProcessIfSnapshotAvailable];
 }
 
 - (void) macintoshMenuDidChange: (NSNotification*)notification
@@ -806,16 +807,15 @@ static Eau *gSharedEauInstance = nil;
 
   if (![self _ensureMenuServerConnection])
     {
-      NSLog(@"Eau: GNUstep menu server unavailable, launching Menu.app and suppressing local menu bar for window: %@", w);
-      EAULOG(@"Eau: GNUstep menu server unavailable, launching Menu.app and suppressing local menu bar for window: %@", w);
-      [[EauMenuRelaunchManager sharedManager] relaunchMenuProcessIfSnapshotAvailable];
+      NSLog(@"Eau: GNUstep menu server unavailable, automatic Menu.app restart disabled for window: %@", w);
+      EAULOG(@"Eau: GNUstep menu server unavailable, automatic Menu.app restart disabled for window: %@", w);
+      // [[EauMenuRelaunchManager sharedManager] relaunchMenuProcessIfSnapshotAvailable];
       return;
     }
 
   // Rate-limited menu updating
   [NSObject cancelPreviousPerformRequestsWithTarget:self selector:@selector(sendMenu:) object:w];
   [self performSelector:@selector(sendMenu:) withObject:w afterDelay:0.1];
-
 }
 
 - (void)_performMenuActionFromIPC:(NSDictionary *)info
